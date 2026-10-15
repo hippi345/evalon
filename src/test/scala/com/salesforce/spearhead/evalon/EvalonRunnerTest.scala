@@ -282,6 +282,38 @@ class EvalonRunnerTest extends AnyFunSuite with BeforeAndAfterAll:
     assert(ex.getCause.isInstanceOf[NullPointerException])
   }
 
+  test("event source name colliding with participant name is rejected at load") {
+    import java.nio.file.{Files, Path}
+    val yaml = """
+      |name: collision-test
+      |description: test event source name collision
+      |participants:
+      |  end_user:
+      |    type: simulated
+      |  agent:
+      |    type: evaluated
+      |conversations:
+      |  - name: chat
+      |    between: [end_user, agent]
+      |    initiated_by: end_user
+      |event_sources:
+      |  agent:
+      |    type: simulated
+      |    description: name collision
+      |eval_criteria:
+      |  - name: ok
+      |    description: ok
+      |""".stripMargin
+    val tmpPath = Files.createTempFile("collision-scenario-", ".yaml")
+    try
+      Files.writeString(tmpPath, yaml)
+      val ex = intercept[RuntimeException] {
+        EvalonRunner.loadScenario(tmpPath)
+      }
+      assert(ex.getMessage.contains("Failed to load scenario"))
+    finally Files.deleteIfExists(tmpPath)
+  }
+
   private def scenario(
       name: String,
       eventSources: List[EventSourceConfig] = Nil
