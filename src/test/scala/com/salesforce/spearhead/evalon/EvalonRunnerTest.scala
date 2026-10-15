@@ -314,6 +314,39 @@ class EvalonRunnerTest extends AnyFunSuite with BeforeAndAfterAll:
     finally Files.deleteIfExists(tmpPath)
   }
 
+  test("observer-only participant with no direct conversation is rejected at load") {
+    import java.nio.file.{Files, Path}
+    val yaml = """
+      |name: observer-only-test
+      |description: test observer with no conversations
+      |participants:
+      |  end_user:
+      |    type: simulated
+      |  agent:
+      |    type: evaluated
+      |  observer:
+      |    type: simulated
+      |conversations:
+      |  - name: chat
+      |    between: [end_user, agent]
+      |    initiated_by: end_user
+      |observations:
+      |  - participant: observer
+      |    observes: [chat]
+      |eval_criteria:
+      |  - name: ok
+      |    description: ok
+      |""".stripMargin
+    val tmpPath = Files.createTempFile("observer-scenario-", ".yaml")
+    try
+      Files.writeString(tmpPath, yaml)
+      val ex = intercept[RuntimeException] {
+        EvalonRunner.loadScenario(tmpPath)
+      }
+      assert(ex.getMessage.contains("Failed to load scenario"))
+    finally Files.deleteIfExists(tmpPath)
+  }
+
   private def scenario(
       name: String,
       eventSources: List[EventSourceConfig] = Nil

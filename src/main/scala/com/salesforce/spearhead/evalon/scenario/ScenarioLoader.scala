@@ -29,7 +29,10 @@ object ScenarioLoader:
   private val reservedNames = Set("user", "assistant")
 
   private def validateScenario(scenario: Scenario): Either[String, Unit] =
-    validateEventSourceNames(scenario)
+    for
+      _ <- validateEventSourceNames(scenario)
+      _ <- validateObserverParticipants(scenario)
+    yield ()
 
   private def validateEventSourceNames(scenario: Scenario): Either[String, Unit] =
     val participantNames = scenario.participants.keySet
@@ -39,6 +42,19 @@ object ScenarioLoader:
       Left(
         s"Event source name(s) collide with participant name(s): ${collisions.mkString(", ")}. " +
           "Event sources and participants must have distinct names to avoid failure misclassification."
+      )
+    else Right(())
+
+  private def validateObserverParticipants(scenario: Scenario): Either[String, Unit] =
+    val observers = scenario.observations.map(_.participant).toSet
+    val conversationParticipants = scenario.conversations
+      .flatMap(_.between)
+      .toSet
+    val observerOnlyParticipants = observers.diff(conversationParticipants)
+    if observerOnlyParticipants.nonEmpty then
+      Left(
+        s"Participant(s) are observers but not in any conversation: ${observerOnlyParticipants.mkString(", ")}. " +
+          "An observer that receives events must also participate in at least one conversation to have a place to respond."
       )
     else Right(())
 
