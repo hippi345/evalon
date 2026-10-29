@@ -73,7 +73,7 @@ class StepRequest(BaseModel):
 @app.post("/v1/step")
 def step(req: StepRequest):
     # Look at req.history (a mix of Turn and ToolUse entries) and req.events.
-    # Decide what to say in req.respond_in. Run any tools yourself; report them in tool_trace.
+    # Decide what to say in req.respond_in. Run any tools yourself; report them in tool_interactions.
     last_user_message = next(
         (
             e.content
@@ -89,7 +89,7 @@ def step(req: StepRequest):
                 "sender": "agent",
                 "content": f"Echo from remote agent: {last_user_message}",
             },
-            "tool_trace": [],
+            "tool_interactions": [],
         }
     }
 
