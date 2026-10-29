@@ -28,7 +28,11 @@ object ScenarioLoader:
 
   private val reservedNames = Set("user", "assistant")
 
-  private def validateScenario(scenario: Scenario): Either[String, Unit] =
+  /** Checks a scenario for configurations that crash or misclassify failures at runtime. Run by
+    * {@link #load} and again by {@code EvalonRunner} before a simulation starts, so scenarios built
+    * directly in code are covered too.
+    */
+  def validateScenario(scenario: Scenario): Either[String, Unit] =
     for
       _ <- validateEventSourceNames(scenario)
       _ <- validateObserverParticipants(scenario)
@@ -46,15 +50,20 @@ object ScenarioLoader:
     else Right(())
 
   private def validateObserverParticipants(scenario: Scenario): Either[String, Unit] =
-    val observers = scenario.observations.map(_.participant).toSet
+    // Only evaluated participants need a conversation to reply in: EvaluatedAgent replies on its
+    // first direct conversation, while simulated participants ignore observed events.
+    val evaluated = scenario.participants.collect {
+      case (name, p) if p.participantType == ParticipantType.Evaluated => name
+    }.toSet
+    val observers = scenario.observations.map(_.participant).toSet.intersect(evaluated)
     val conversationParticipants = scenario.conversations
       .flatMap(_.between)
       .toSet
     val observerOnlyParticipants = observers.diff(conversationParticipants)
     if observerOnlyParticipants.nonEmpty then
       Left(
-        s"Participant(s) are observers but not in any conversation: ${observerOnlyParticipants.mkString(", ")}. " +
-          "An observer that receives events must also participate in at least one conversation to have a place to respond."
+        s"Evaluated participant(s) are observers but not in any conversation: ${observerOnlyParticipants.mkString(", ")}. " +
+          "An evaluated observer must also participate in at least one conversation to have a place to respond."
       )
     else Right(())
 

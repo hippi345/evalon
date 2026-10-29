@@ -314,11 +314,44 @@ class EvalonRunnerTest extends AnyFunSuite with BeforeAndAfterAll:
     finally Files.deleteIfExists(tmpPath)
   }
 
-  test("observer-only participant with no direct conversation is rejected at load") {
+  test("evaluated observer with no direct conversation is rejected at load") {
     import java.nio.file.{Files, Path}
     val yaml = """
       |name: observer-only-test
-      |description: test observer with no conversations
+      |description: test evaluated observer with no conversations
+      |participants:
+      |  end_user:
+      |    type: simulated
+      |  helper:
+      |    type: simulated
+      |  agent:
+      |    type: evaluated
+      |conversations:
+      |  - name: chat
+      |    between: [end_user, helper]
+      |    initiated_by: end_user
+      |observations:
+      |  - participant: agent
+      |    observes: [chat]
+      |eval_criteria:
+      |  - name: ok
+      |    description: ok
+      |""".stripMargin
+    val tmpPath = Files.createTempFile("observer-scenario-", ".yaml")
+    try
+      Files.writeString(tmpPath, yaml)
+      val ex = intercept[RuntimeException] {
+        EvalonRunner.loadScenario(tmpPath)
+      }
+      assert(ex.getMessage.contains("Failed to load scenario"))
+    finally Files.deleteIfExists(tmpPath)
+  }
+
+  test("simulated observer with no direct conversation is still accepted at load") {
+    import java.nio.file.{Files, Path}
+    val yaml = """
+      |name: simulated-observer-test
+      |description: simulated observers ignore observed events
       |participants:
       |  end_user:
       |    type: simulated
@@ -337,14 +370,40 @@ class EvalonRunnerTest extends AnyFunSuite with BeforeAndAfterAll:
       |  - name: ok
       |    description: ok
       |""".stripMargin
-    val tmpPath = Files.createTempFile("observer-scenario-", ".yaml")
+    val tmpPath = Files.createTempFile("sim-observer-scenario-", ".yaml")
     try
       Files.writeString(tmpPath, yaml)
-      val ex = intercept[RuntimeException] {
-        EvalonRunner.loadScenario(tmpPath)
-      }
-      assert(ex.getMessage.contains("Failed to load scenario"))
+      assert(EvalonRunner.loadScenario(tmpPath).observations.map(_.participant) == List("observer"))
     finally Files.deleteIfExists(tmpPath)
+  }
+
+  test("a directly constructed scenario with a colliding event source is rejected at run") {
+    val s = scenario("direct-collision", eventSources = List(EventSourceConfig("agent", "simulated")))
+    val agent: SimpleAgent = (_, _, _) => CompletableFuture.completedFuture(AgentReply.end())
+    val ex = intercept[IllegalArgumentException] {
+      evalon.runSimple(s, agent, judgeAndChatLlm, failFastOptions)
+    }
+    assert(ex.getMessage.contains("collide"))
+  }
+
+  test("a directly constructed scenario with an evaluated observer-only participant is rejected at run") {
+    val base = scenario("direct-observer")
+    val s = base.copy(
+      participants = Map(
+        "end_user" -> ParticipantConfig("end_user", ParticipantType.Simulated),
+        "helper" -> ParticipantConfig("helper", ParticipantType.Simulated),
+        "agent" -> ParticipantConfig("agent", ParticipantType.Evaluated)
+      ),
+      conversations = List(
+        ConversationConfig("chat", List("end_user", "helper"), initiatedBy = Some("end_user"))
+      ),
+      observations = List(ObservationConfig("agent", List("chat")))
+    )
+    val agent: SimpleAgent = (_, _, _) => CompletableFuture.completedFuture(AgentReply.end())
+    val ex = intercept[IllegalArgumentException] {
+      evalon.runSimple(s, agent, judgeAndChatLlm, failFastOptions)
+    }
+    assert(ex.getMessage.contains("observers"))
   }
 
   private def scenario(
